@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Enums are not supported in SQLite, so we use Strings.
+// Role: RENTER, OWNER, ADMIN
+// VerificationStatus: UNVERIFIED, PENDING_VERIFICATION, VERIFIED, REJECTED
+// GameCondition: NEW, LIKE_NEW, GOOD, ACCEPTABLE
+// ListingStatus: DRAFT, ACTIVE, IN_RENTAL, INACTIVE
+// RentalStatus: PENDING_SHIPMENT, IN_TRANSIT_TO_RENTER, ACTIVE, IN_RETURN_TRANSIT, COMPLETED, OVERDUE, LOST_PAID, DEFAULTED, CANCELLED
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String
+  name              String
+  phone             String?
+  role              String             @default("RENTER")
+  verificationStatus String            @default("UNVERIFIED")
+  ratingAverage     Float              @default(0)
+  ratingCount       Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  identity          UserIdentity?
+  listings          GameListing[]
+  rentalsAsRenter   Rental[]           @relation("RenterRentals")
+  rentalsAsOwner    Rental[]           @relation("OwnerRentals")
+  reviewsWritten    Review[]           @relation("Reviewer")
+  reviewsReceived   Review[]           @relation("Reviewee")
+  paymentAuths      PaymentAuthorization[]
+}
+
+model UserIdentity {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id])
+  idType            String    // CNIC, Passport
+  idNumber          String
+  idFrontImagePath  String
+  idBackImagePath   String
+  selfieImagePath   String
+  verifiedByAdminId String?
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model GameListing {
+  id                String        @id @default(uuid())
+  ownerId           String
+  owner             User          @relation(fields: [ownerId], references: [id])
+  title             String
+  platform          String
+  region            String?
+  condition         String
+  purchasePrice     Float
+  baseRentalPrice   Float
+  allowedDurations  String        // JSON string or comma separated
+  city              String
+  status            String        @default("DRAFT")
+  images            GamePhoto[]
+  rentals           Rental[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model GamePhoto {
+  id            String      @id @default(uuid())
+  listingId     String
+  listing       GameListing @relation(fields: [listingId], references: [id])
+  imagePath     String
+}
+
+model Rental {
+  id                String        @id @default(uuid())
+  listingId         String
+  listing           GameListing   @relation(fields: [listingId], references: [id])
+  renterId          String
+  renter            User          @relation("RenterRentals", fields: [renterId], references: [id])
+  ownerId           String
+  owner             User          @relation("OwnerRentals", fields: [ownerId], references: [id])
+  status            String        @default("PENDING_SHIPMENT")
+  rentalStartDate   DateTime?
+  rentalEndDate     DateTime?
+  actualReturnDate  DateTime?
+  rentalPrice       Float
+  platformFee       Float
+  currency          String        @default("PKR")
+  
+  shippingInfo      ShippingInfo?
+  paymentAuth       PaymentAuthorization?
+  lateFees          LateFee[]
+  reviews           Review[]
+  adminCases        AdminCase[]
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
+
+model PaymentAuthorization {
+  id                String   @id @default(uuid())
+  rentalId          String   @unique
+  rental            Rental   @relation(fields: [rentalId], references: [id])
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  provider          String   // STRIPE_TEST
+  providerIntentId  String
+  amountAuthorized  Float
+  amountCaptured    Float    @default(0)
+  status            String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ShippingInfo {
+  id                      String    @id @default(uuid())
+  rentalId                String    @unique
+  rental                  Rental    @relation(fields: [rentalId], references: [id])
+  outboundTrackingNumber  String?
+  outboundCourier         String?
+  outboundShippedAt       DateTime?
+  inboundTrackingNumber   String?
+  inboundCourier          String?
+  inboundShippedAt        DateTime?
+}
+
+model LateFee {
+  id                  String   @id @default(uuid())
+  rentalId            String
+  rental              Rental   @relation(fields: [rentalId], references: [id])
+  periodStart         DateTime
+  periodEnd           DateTime
+  feeAmount           Float
+  chargedSuccessfully Boolean  @default(false)
+  createdAt           DateTime @default(now())
+}
+
+model Review {
+  id              String   @id @default(uuid())
+  rentalId        String
+  rental          Rental   @relation(fields: [rentalId], references: [id])
+  reviewerId      String
+  reviewer        User     @relation("Reviewer", fields: [reviewerId], references: [id])
+  revieweeId      String
+  reviewee        User     @relation("Reviewee", fields: [revieweeId], references: [id])
+  rating          Int
+  comment         String?
+  createdAt       DateTime @default(now())
+}
+
+model AdminCase {
+  id          String   @id @default(uuid())
+  rentalId    String
+  rental      Rental   @relation(fields: [rentalId], references: [id])
+  caseType    String
+  status      String
+  notes       String?
+  resolvedAt  DateTime?
+}
